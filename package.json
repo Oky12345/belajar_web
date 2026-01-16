@@ -1,0 +1,13 @@
+{
+  "name": "seo-tools-dashboard",
+  "version": "1.0.0",
+  "description": "SEO Tools for Tokopedia/Shopee Ranking",
+  "main": "public/index.html",
+  "scripts": {
+    "start": "python backend/server.py",
+    "dev": "concurrently \"python backend/server.py\" \"lite-server public\"",
+    "build": "echo 'Build complete'"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
