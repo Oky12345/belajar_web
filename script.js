@@ -3,6 +3,14 @@
  * Complete automation suite for Tokopedia/Shopee
  */
 
+const SUPABASE_URL = "https://uwrvwxnklojjbdluzsbf.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cnZ3eG5rbG9qamJkbHV6c2JmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwNjAxNTUsImV4cCI6MjA4NDYzNjE1NX0.XMBUwsjic0c_vl0dEJ4A9AAuuXVsMBwiwoJo03RoFjA";
+
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
+
 // Configuration
 const CONFIG = {
     API_BASE_URL: 'http://localhost:5000',
@@ -774,4 +782,5 @@ notificationStyles.textContent = `
         to { transform: translateX(100%); opacity: 0; }
     }
 `;
+
 document.head.appendChild(notificationStyles);
