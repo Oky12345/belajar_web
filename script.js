@@ -1,26 +1,48 @@
 /**
  * SEO Tools Dashboard - Professional Edition
  * Complete automation suite for Tokopedia/Shopee
+ * UPDATED FOR GITHUB PAGES + LOCALHOST HYBRID
  */
 
-const SUPABASE_URL = "https://uwrvwxnklojjbdluzsbf.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3cnZ3eG5rbG9qamJkbHV6c2JmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwNjAxNTUsImV4cCI6MjA4NDYzNjE1NX0.XMBUwsjic0c_vl0dEJ4A9AAuuXVsMBwiwoJo03RoFjA";
-
-const supabase = window.supabase.createClient(
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY
-);
-
-// Configuration
+// Configuration - AUTO DETECT MODE
 const CONFIG = {
-    API_BASE_URL: 'http://localhost:5000',
+    // AUTO-DETECT API URL: GitHub Pages pakai proxy, Localhost pakai langsung
+    get API_BASE_URL() {
+        // Jika ada proxy API (GitHub Pages mode)
+        if (typeof SEOAPI !== 'undefined') {
+            return window.SEO_BACKEND_URL || '';
+        }
+        // Localhost development
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return 'http://localhost:5000';
+        }
+        // Default fallback
+        return '';
+    },
+    
     LOG_LIMIT: 100,
     UPDATE_INTERVAL: 30000, // 30 seconds
     TOOLS: {
-        click: { name: 'Click Circulation', endpoint: '/api/tools/click-circulation/start' },
-        transaction: { name: 'Micro Transaction', endpoint: '/api/tools/micro-transaction/schedule' },
-        review: { name: 'Review Booster', endpoint: '/api/tools/review-booster/start' },
-        safety: { name: 'Safety Monitor', endpoint: '/api/tools/safety-monitor/check' }
+        click: { 
+            name: 'Click Circulation', 
+            endpoint: '/api/tools/click-circulation/start',
+            proxyMethod: 'startClickCirculation'
+        },
+        transaction: { 
+            name: 'Micro Transaction', 
+            endpoint: '/api/tools/real-traffic/start', // 💀 FIXED ENDPOINT
+            proxyMethod: 'createCampaign'
+        },
+        safety: { 
+            name: 'Safety Monitor', 
+            endpoint: '/api/tools/safety-monitor/check',
+            proxyMethod: 'safetyCheck'
+        },
+        review: { 
+            name: 'Review Booster', 
+            endpoint: '/api/tools/review-booster/start',
+            proxyMethod: null // Not implemented
+        }
     }
 };
 
@@ -39,6 +61,10 @@ const elements = {};
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 SEO Tools Dashboard v2.1.4 - Initializing...');
+    
+    // Tampilkan mode yang aktif
+    const mode = typeof SEOAPI !== 'undefined' ? 'GitHub Pages + Proxy' : 'Localhost Direct';
+    console.log(`📡 Mode: ${mode}`);
     
     initializeElements();
     setupEventListeners();
@@ -145,8 +171,9 @@ function initializeDashboard() {
     // Initialize particles background
     initParticles();
     
-    // Initial log
-    addLog('system', 'Dashboard initialized successfully');
+    // Initial log dengan info mode
+    const mode = typeof SEOAPI !== 'undefined' ? 'GitHub Pages + Proxy Mode' : 'Localhost Direct Mode';
+    addLog('system', `Dashboard initialized - ${mode}`);
     addLog('system', 'Professional Edition v2.1.4 - Premium Features Enabled');
     addLog('info', 'All 4 automation tools are ready');
     
@@ -178,37 +205,62 @@ function updateDateTime() {
 }
 
 async function checkBackendConnection() {
-    try {
-        const response = await fetch(`${CONFIG.API_BASE_URL}/api/status`);
-        
-        if (response.ok) {
-            const data = await response.json();
+    // 🔥 AUTO-DETECT MODE: Proxy API atau Localhost
+    const useProxy = typeof SEOAPI !== 'undefined';
+    
+    if (useProxy) {
+        // Mode GitHub Pages dengan Proxy API
+        try {
+            const isOnline = await SEOAPI.isBackendOnline();
             
-            if (data.status === 'online') {
+            if (isOnline) {
                 state.backendConnected = true;
                 updateConnectionStatus(true);
-                addLog('success', 'Backend server connected successfully');
-                
-                // Update available tools
-                if (data.tools && Array.isArray(data.tools)) {
-                    data.tools.forEach(tool => {
-                        state.activeTools[tool.name] = tool.status;
-                    });
-                    updateToolStatus();
-                }
-                
+                addLog('success', 'Backend connected via proxy API');
                 return true;
+            } else {
+                state.backendConnected = false;
+                updateConnectionStatus(false);
+                addLog('info', 'Backend offline - Running in demo mode');
+                return false;
             }
+        } catch (error) {
+            console.log('Proxy check error:', error);
+            state.backendConnected = false;
+            updateConnectionStatus(false);
+            addLog('info', 'Proxy API initializing...');
+            return false;
         }
-    } catch (error) {
-        console.error('Backend connection error:', error);
+    } else {
+        // Mode Localhost Direct
+        try {
+            const response = await fetch(`${CONFIG.API_BASE_URL}/api/status`, {
+                method: 'GET',
+                mode: 'cors',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                if (data.status === 'online') {
+                    state.backendConnected = true;
+                    updateConnectionStatus(true);
+                    addLog('success', 'Local backend connected');
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.log('Local backend check error:', error);
+        }
+        
+        state.backendConnected = false;
+        updateConnectionStatus(false);
+        addLog('error', 'Local backend not connected');
+        return false;
     }
-    
-    state.backendConnected = false;
-    updateConnectionStatus(false);
-    addLog('error', 'Backend server not connected');
-    
-    return false;
 }
 
 function updateConnectionStatus(connected) {
@@ -241,6 +293,20 @@ function updateToolStatus() {
 }
 
 async function startTool(toolType) {
+    // 🔥 AUTO-SELECT EXECUTION METHOD
+    const useProxy = typeof SEOAPI !== 'undefined';
+    
+    if (useProxy) {
+        // Execute via Proxy API (GitHub Pages mode)
+        await startToolViaProxy(toolType);
+    } else {
+        // Execute via Direct API (Localhost mode)
+        await startToolDirect(toolType);
+    }
+}
+
+async function startToolDirect(toolType) {
+    // Original direct API call for localhost
     if (!state.backendConnected) {
         addLog('error', 'Cannot start tool - Backend not connected');
         showNotification('Backend server not connected', 'error');
@@ -265,24 +331,21 @@ async function startTool(toolType) {
         return;
     }
     
-    addLog('info', `Starting ${tool.name}...`);
+    addLog('info', `Starting ${tool.name} (Direct Mode)...`);
     showNotification(`Starting ${tool.name}`, 'info');
     
     try {
         // Prepare request data
         const requestData = {
             url: productUrl,
-            sessions: toolType === 'click' ? 500 : undefined,
-            daily_count: toolType === 'transaction' ? 3 : undefined,
-            days: toolType === 'transaction' ? 7 : undefined
+            sessions: toolType === 'click' ? 500 : 10,
+            platform: 'tokopedia'
         };
         
-        // Remove undefined values
-        Object.keys(requestData).forEach(key => {
-            if (requestData[key] === undefined) {
-                delete requestData[key];
-            }
-        });
+        // Special handling for transaction tool
+        if (toolType === 'transaction') {
+            requestData.name = `Transaction_${Date.now()}`;
+        }
         
         const response = await fetch(`${CONFIG.API_BASE_URL}${tool.endpoint}`, {
             method: 'POST',
@@ -294,11 +357,10 @@ async function startTool(toolType) {
         
         const data = await response.json();
         
-        if (data.status === 'success') {
+        if (data.status === 'success' || data.status === 'warning') {
             addLog('success', `${tool.name} started successfully`);
-            addLog('info', `Job ID: ${data.data?.job_id || data.data?.schedule_id || 'N/A'}`);
             
-            // Update UI based on tool type
+            // Update UI
             updateToolUI(toolType, data);
             
             showNotification(`${tool.name} started successfully!`, 'success');
@@ -308,9 +370,88 @@ async function startTool(toolType) {
         }
         
     } catch (error) {
-        console.error(`Tool ${toolType} error:`, error);
+        console.error(`Direct tool ${toolType} error:`, error);
         addLog('error', `${tool.name} connection failed`);
         showNotification('Connection to backend failed', 'error');
+    }
+}
+
+async function startToolViaProxy(toolType) {
+    // Proxy API call for GitHub Pages
+    const tool = CONFIG.TOOLS[toolType];
+    if (!tool) {
+        addLog('error', `Unknown tool type: ${toolType}`);
+        return;
+    }
+    
+    // Check if proxy method exists
+    if (!tool.proxyMethod || typeof SEOAPI[tool.proxyMethod] !== 'function') {
+        addLog('warning', `${tool.name} not available in proxy mode`);
+        showNotification(`${tool.name} not available in demo mode`, 'warning');
+        return;
+    }
+    
+    // Get URL from input
+    const toolCard = document.querySelector(`[data-tool="${toolType}"]`);
+    const urlInput = toolCard ? toolCard.querySelector('.url-input') : null;
+    const productUrl = urlInput ? urlInput.value : '';
+    
+    // Validate URL
+    if (!productUrl || !productUrl.startsWith('http')) {
+        addLog('error', 'Please enter a valid URL starting with http:// or https://');
+        showNotification('Invalid URL format', 'error');
+        return;
+    }
+    
+    addLog('info', `Starting ${tool.name} via Proxy...`);
+    showNotification(`Starting ${tool.name}`, 'info');
+    
+    try {
+        let response;
+        
+        // Call appropriate proxy method
+        switch(toolType) {
+            case 'click':
+                response = await SEOAPI.startClickCirculation({
+                    url: productUrl,
+                    sessions: 500
+                });
+                break;
+                
+            case 'transaction':
+                response = await SEOAPI.createCampaign({
+                    name: `Transaction_${Date.now()}`,
+                    url: productUrl,
+                    platform: 'tokopedia',
+                    sessions: 10
+                });
+                break;
+                
+            case 'safety':
+                response = await SEOAPI.safetyCheck();
+                break;
+                
+            default:
+                addLog('warning', `Tool ${toolType} not implemented in proxy mode`);
+                return;
+        }
+        
+        if (response.status === 'success' || response.status === 'warning') {
+            addLog('success', `${tool.name} executed successfully`);
+            
+            // Update UI
+            updateToolUI(toolType, response);
+            
+            showNotification(`${tool.name} executed`, 'success');
+        } else {
+            addLog('error', `${tool.name} failed: ${response.message || 'Unknown error'}`);
+            showNotification(`Failed to start ${tool.name}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error(`Proxy tool ${toolType} error:`, error);
+        addLog('error', `${tool.name} proxy error`);
+        showNotification('Proxy connection failed', 'error');
     }
 }
 
@@ -318,30 +459,34 @@ function updateToolUI(toolType, responseData) {
     const toolCard = document.querySelector(`[data-tool="${toolType}"]`);
     if (!toolCard) return;
     
-    // Update stats based on tool type
     const stats = toolCard.querySelectorAll('.stat-value');
     
     switch (toolType) {
         case 'click':
             if (stats.length >= 2) {
                 const currentClicks = parseInt(stats[0].textContent.replace('K', '000')) || 1200;
-                const newClicks = currentClicks + responseData.data?.sessions || 500;
+                const newClicks = currentClicks + (responseData.data?.sessions || 500);
                 stats[0].textContent = formatNumber(newClicks) + 'K';
                 
                 const currentBoost = parseInt(stats[1].textContent.replace('%', '')) || 15;
-                const newBoost = Math.min(currentBoost + 2, 50); // Cap at 50%
+                const newBoost = Math.min(currentBoost + 2, 50);
                 stats[1].textContent = `+${newBoost}%`;
             }
             break;
             
         case 'transaction':
             if (stats.length >= 2) {
+                // Handle both proxy and direct responses
+                const transactionCount = responseData.data?.transactions || 
+                                       responseData.data?.sessions || 
+                                       3;
+                
                 const currentTxns = parseInt(stats[0].textContent) || 85;
-                const newTxns = currentTxns + (responseData.data?.daily_count || 3);
+                const newTxns = currentTxns + transactionCount;
                 stats[0].textContent = newTxns;
                 
                 const currentVolume = parseFloat(stats[1].textContent.replace('Rp ', '').replace('M', '')) || 2.4;
-                const amount = (responseData.data?.daily_count || 3) * 85000; // Average Rp 85,000 per transaction
+                const amount = transactionCount * 85000;
                 const newVolume = currentVolume + (amount / 1000000);
                 stats[1].textContent = `Rp ${newVolume.toFixed(1)}M`;
             }
@@ -362,7 +507,7 @@ function updateToolUI(toolType, responseData) {
             break;
     }
     
-    // Update tool status
+    // Update tool status badge
     const badge = toolCard.querySelector('.tool-badge');
     if (badge) {
         badge.textContent = 'Running';
@@ -562,14 +707,14 @@ function sendCommand() {
     const cmd = command.toLowerCase();
     
     if (cmd === 'status') {
+        const mode = typeof SEOAPI !== 'undefined' ? 'GitHub Pages + Proxy' : 'Localhost Direct';
+        addLog('info', `Mode: ${mode}`);
         addLog('info', `Backend: ${state.backendConnected ? 'Connected' : 'Disconnected'}`);
-        addLog('info', `Active tools: ${Object.keys(state.activeTools).length}`);
         addLog('info', `Security score: ${state.securityScore}%`);
     } else if (cmd === 'help') {
         addLog('info', 'Available commands: status, help, clear, test, refresh');
     } else if (cmd === 'test') {
         addLog('info', 'Testing all tools...');
-        // Simulate tool tests
         setTimeout(() => addLog('success', 'All tools test passed'), 1000);
     } else if (cmd === 'refresh') {
         checkBackendConnection();
@@ -638,17 +783,14 @@ function startBackgroundUpdates() {
     // Simulate tool activity updates
     setInterval(() => {
         if (!state.isLogPaused && state.backendConnected) {
-            // Random tool updates
-            const tools = ['click', 'transaction', 'review', 'safety'];
+            const tools = ['click', 'transaction', 'safety'];
             const randomTool = tools[Math.floor(Math.random() * tools.length)];
             
-            // Random activity message
             const activities = [
                 'Processing traffic data...',
                 'Analyzing competitor patterns...',
                 'Updating security protocols...',
-                'Optimizing transaction schedules...',
-                'Generating performance reports...'
+                'Optimizing transaction schedules...'
             ];
             
             const randomActivity = activities[Math.floor(Math.random() * activities.length)];
@@ -784,3 +926,25 @@ notificationStyles.textContent = `
 `;
 
 document.head.appendChild(notificationStyles);
+
+// ✅ AUTO-DETECT MODE INDICATOR
+window.addEventListener('load', function() {
+    // Add mode indicator to footer
+    const mode = typeof SEOAPI !== 'undefined' ? 'GitHub Pages Mode' : 'Localhost Mode';
+    const modeElement = document.createElement('div');
+    modeElement.className = 'mode-indicator';
+    modeElement.innerHTML = `<small>${mode}</small>`;
+    modeElement.style.cssText = `
+        position: fixed;
+        bottom: 5px;
+        left: 5px;
+        background: rgba(0,0,0,0.7);
+        color: #f59e0b;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-family: monospace;
+        z-index: 1000;
+    `;
+    document.body.appendChild(modeElement);
+});
